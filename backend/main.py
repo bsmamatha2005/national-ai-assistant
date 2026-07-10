@@ -30,6 +30,9 @@ def root():
 @app.post("/chat", response_model=ChatResponse)
 def chat(request: ChatRequest):
     context = retrieve_context(request.message)
+    print("=== RETRIEVED CONTEXT ===")
+    print(context)
+    print("==========================")
 
     prompt = f"""Use the following context to answer the question accurately. If the context doesn't contain relevant information, answer using your general knowledge but mention that it may not be current.
 

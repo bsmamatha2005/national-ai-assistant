@@ -1,18 +1,41 @@
 import { useState } from 'react'
 import './App.css'
 
+const BACKEND_URL = "http://localhost:8000"
+
 function App() {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  const handleSend = () => {
+  const sendMessage = async () => {
     if (!input.trim()) return
-    setMessages([...messages, { text: input, sender: 'user' }])
+
+    const userMessage = { sender: 'user', text: input }
+    setMessages(prev => [...prev, userMessage])
     setInput('')
+    setLoading(true)
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: input })
+      })
+
+      if (!response.ok) throw new Error('Server error')
+
+      const data = await response.json()
+      setMessages(prev => [...prev, { sender: 'assistant', text: data.reply }])
+    } catch (err) {
+      setMessages(prev => [...prev, { sender: 'assistant', text: 'Error: could not reach server.' }])
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter') handleSend()
+    if (e.key === 'Enter') sendMessage()
   }
 
   return (
@@ -23,6 +46,7 @@ function App() {
             {msg.text}
           </div>
         ))}
+        {loading && <div className="message assistant">Thinking...</div>}
       </div>
       <div className="input-row">
         <input
@@ -31,8 +55,9 @@ function App() {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Type a message..."
+          disabled={loading}
         />
-        <button onClick={handleSend}>Send</button>
+        <button onClick={sendMessage} disabled={loading}>Send</button>
       </div>
     </div>
   )
