@@ -8,31 +8,38 @@ function App() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const sendMessage = async () => {
-    if (!input.trim()) return
+const sendMessage = async () => {
+  if (!input.trim()) return
 
-    const userMessage = { sender: 'user', text: input }
-    setMessages(prev => [...prev, userMessage])
-    setInput('')
-    setLoading(true)
+  const userMessage = { sender: 'user', text: input }
+  const updatedMessages = [...messages, userMessage]
+  setMessages(updatedMessages)
+  setInput('')
+  setLoading(true)
 
-    try {
-      const response = await fetch(`${BACKEND_URL}/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: input })
-      })
+  try {
+    // Convert messages into the format backend expects
+    const history = messages.map(msg => ({
+      role: msg.sender === 'user' ? 'user' : 'assistant',
+      content: msg.text
+    }))
 
-      if (!response.ok) throw new Error('Server error')
+    const response = await fetch(`${BACKEND_URL}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: input, history: history })
+    })
 
-      const data = await response.json()
-      setMessages(prev => [...prev, { sender: 'assistant', text: data.reply }])
-    } catch (err) {
-      setMessages(prev => [...prev, { sender: 'assistant', text: 'Error: could not reach server.' }])
-    } finally {
-      setLoading(false)
-    }
+    if (!response.ok) throw new Error('Server error')
+
+    const data = await response.json()
+    setMessages(prev => [...prev, { sender: 'assistant', text: data.reply }])
+  } catch (err) {
+    setMessages(prev => [...prev, { sender: 'assistant', text: 'Error: could not reach server.' }])
+  } finally {
+    setLoading(false)
   }
+}
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') sendMessage()
