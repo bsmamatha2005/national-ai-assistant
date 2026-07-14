@@ -51,18 +51,10 @@ def chat(request: ChatRequest):
         history_text += f"{role_label}: {msg.content}\n"
 
     if context is None:
-        prompt = f"""You are a helpful assistant. The knowledge base has no relevant information for this question.
-Tell the user honestly that you don't have this information in your knowledge base — do NOT guess or make up an answer, even if you think you know it from general knowledge.
-
-Conversation so far:
-{history_text}
-
-Question: {request.message}
-
-Answer:"""
-    else:
-        prompt = f"""Use ONLY the following context to answer the question. Do not use any outside knowledge.
-If the context does not fully answer the question, say so explicitly instead of filling in gaps.
+        prompt = f"""You are a helpful assistant for Indian users. Follow these rules strictly:
+1. Always respond in the SAME language the user asked in. If the question is in Kannada, your entire answer must be in Kannada. If in English, answer in English.
+2. Use natural, everyday language — avoid robotic or overly formal phrasing.
+3. Use the following context to answer accurately. If the context doesn't contain relevant information, say so in the same language as the question, and suggest checking official sources.
 
 Context:
 {context}
@@ -72,7 +64,7 @@ Conversation so far:
 
 Question: {request.message}
 
-Answer:"""
+Answer (in the same language as the question):"""
 
     payload = {
         "model": MODEL_NAME,
