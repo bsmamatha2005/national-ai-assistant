@@ -1,0 +1,10 @@
+# Run: pip install -r requirements-auth.txt --break-system-packages   (if on Windows without a venv, drop that flag)
+sqlalchemy
+bcrypt
+python-jose[cryptography]
+python-multipart
+authlib
+itsdangerous
+httpx
+email-validator
+python-dotenv

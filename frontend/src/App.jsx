@@ -1,82 +1,170 @@
 import { useState, useRef, useEffect } from 'react'
+import Sidebar from './components/Sidebar'
+import WelcomeScreen from './components/WelcomeScreen'
+import Message from './components/Message'
+import ChatInput from './components/ChatInput'
+import Login from './components/Login'
+import Signup from './components/Signup'
+import { useAuth, BACKEND_URL } from './context/AuthContext'
 import './App.css'
 
-const BACKEND_URL = "http://localhost:8000"
+function newConversation() {
+  return {
+    id: crypto.randomUUID(),
+    title: 'New Chat',
+    messages: []
+  }
+}
 
-function App() {
-  const [messages, setMessages] = useState([])
-  const [input, setInput] = useState('')
+function ChatApp() {
+  const { token, user, logout } = useAuth()
+  const [conversations, setConversations] = useState([newConversation()])
+  const [currentId, setCurrentId] = useState(conversations[0].id)
   const [loading, setLoading] = useState(false)
-  const messagesEndRef = useRef(null)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark')
+  const scrollRef = useRef(null)
+
+  const current = conversations.find(c => c.id === currentId)
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('theme', theme)
+  }, [theme])
 
-  const sendMessage = async () => {
-    if (!input.trim()) return
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
+  }, [current?.messages, loading])
 
-    const userMessage = { sender: 'user', text: input }
-    setMessages(prev => [...prev, userMessage])
-    setInput('')
+  const updateConversation = (id, updater) => {
+    setConversations(prev => prev.map(c => c.id === id ? updater(c) : c))
+  }
+
+  const handleNewChat = () => {
+    const conv = newConversation()
+    setConversations(prev => [conv, ...prev])
+    setCurrentId(conv.id)
+  }
+
+  const sendMessage = async (text) => {
+    if (!text.trim() || loading) return
+
+    const convId = currentId
+    const userMessage = { sender: 'user', text }
+
+    updateConversation(convId, c => ({
+      ...c,
+      title: c.messages.length === 0 ? text.slice(0, 40) : c.title,
+      messages: [...c.messages, userMessage]
+    }))
     setLoading(true)
 
+    // Placeholder assistant message we'll fill in as tokens stream in.
+    updateConversation(convId, c => ({
+      ...c,
+      messages: [...c.messages, { sender: 'assistant', text: '' }]
+    }))
+
     try {
-      const history = messages.map(msg => ({
-        role: msg.sender === 'user' ? 'user' : 'assistant',
-        content: msg.text
+      const historyForBackend = current.messages.map(m => ({
+        role: m.sender === 'user' ? 'user' : 'assistant',
+        content: m.text
       }))
 
       const response = await fetch(`${BACKEND_URL}/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: input, history: history })
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ message: text, history: historyForBackend })
       })
 
       if (!response.ok) throw new Error('Server error')
 
-      const data = await response.json()
-      setMessages(prev => [...prev, { sender: 'assistant', text: data.reply }])
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let fullText = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        fullText += decoder.decode(value, { stream: true })
+
+        updateConversation(convId, c => {
+          const msgs = [...c.messages]
+          msgs[msgs.length - 1] = { sender: 'assistant', text: fullText }
+          return { ...c, messages: msgs }
+        })
+      }
     } catch (err) {
-      setMessages(prev => [...prev, { sender: 'assistant', text: 'Error: could not reach server.' }])
+      updateConversation(convId, c => {
+        const msgs = [...c.messages]
+        msgs[msgs.length - 1] = { sender: 'assistant', text: 'Error: could not reach server.' }
+        return { ...c, messages: msgs }
+      })
     } finally {
       setLoading(false)
     }
   }
 
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter') sendMessage()
-  }
-
-  const clearChat = () => {
-    setMessages([])
-  }
-
   return (
-    <div className="chat-container">
-      <button onClick={clearChat} className="clear-button">Clear Chat</button>
-      <div className="chat-window">
-        {messages.map((msg, i) => (
-          <div key={i} className={`message ${msg.sender}`}>
-            {msg.text}
-          </div>
-        ))}
-        {loading && <div className="message assistant">Thinking...</div>}
-        <div ref={messagesEndRef} />
-      </div>
-      <div className="input-row">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Type a message..."
-          disabled={loading}
-        />
-        <button onClick={sendMessage} disabled={loading}>Send</button>
-      </div>
+    <div className="app-shell">
+      <Sidebar
+        conversations={conversations}
+        currentId={currentId}
+        onSelect={setCurrentId}
+        onNewChat={handleNewChat}
+        collapsed={!sidebarOpen}
+        onToggle={() => setSidebarOpen(o => !o)}
+        theme={theme}
+        onToggleTheme={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
+        user={user}
+        onLogout={logout}
+      />
+
+      <main className="main-panel">
+        <div className="scroll-area" ref={scrollRef}>
+          {current.messages.length === 0 ? (
+            <WelcomeScreen onSuggestion={sendMessage} />
+          ) : (
+            <div className="message-list">
+              {current.messages.map((msg, i) => (
+                <Message
+                  key={i}
+                  sender={msg.sender}
+                  text={msg.text}
+                  thinking={loading && i === current.messages.length - 1 && msg.sender === 'assistant' && msg.text === ''}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        <ChatInput onSend={sendMessage} loading={loading} />
+      </main>
     </div>
   )
+}
+
+function App() {
+  const { token, loading } = useAuth()
+  const [authView, setAuthView] = useState('login')
+
+  if (loading) {
+    return <div className="auth-loading">Loading...</div>
+  }
+
+  if (!token) {
+    return authView === 'login'
+      ? <Login onSwitchToSignup={() => setAuthView('signup')} />
+      : <Signup onSwitchToLogin={() => setAuthView('login')} />
+  }
+
+  return <ChatApp />
 }
 
 export default App
